@@ -1,0 +1,5 @@
+services:
+  email-responser:
+    image: valkey/valkey
+    ports:
+    -  "6379:6379"

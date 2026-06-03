@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple AI Email UI</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="page-backdrop"></div>
+    <div class="app-shell">
+        <header class="app-header">
+            <div>
+                <p class="eyebrow">AI Email Responder</p>
+                <h1>AI AGENT FOR EMAIL SUPPORT</h1>
+            </div>
+        </header>
+
+        <main class="card-grid">
+            <section class="card">
+                <h2>Email Input</h2>
+                <label for="emailBody">Paste email text here</label>
+                <textarea id="emailBody" placeholder="Paste an incoming email or type your own..."></textarea>
+                <div class="button-row">
+                    <button id="fetchButton">Fetch Latest Email</button>
+                    <button id="generateButton">Generate Reply</button>
+                </div>
+                <div class="button-row">
+                    <button id="ignoreButton">Ignore Unrelated Mail</button>
+                </div>
+            </section>
+
+            <section class="card status-card">
+                <h2>Current Email</h2>
+                <div class="field-row">
+                    <span class="field-label">Sender:</span>
+                    <span id="senderText">None</span>
+                </div>
+                <div class="field-row">
+                    <span class="field-label">Reply ready:</span>
+                    <span id="replyStatus">No</span>
+                </div>
+                <div class="field-row">
+                    <span class="field-label">Last action:</span>
+                    <span id="lastAction">Waiting</span>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>AI Reply</h2>
+                <label for="replyBody">Generated answer</label>
+                <textarea id="replyBody" readonly placeholder="Generated reply appears here..."></textarea>
+                <div class="button-row">
+                    <button id="sendButton">Send Reply</button>
+                </div>
+                <div class="button-row">
+                    <button id="markReadButton">Mark as Read</button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        const emailBody = document.getElementById('emailBody');
+        const replyBody = document.getElementById('replyBody');
+        const senderText = document.getElementById('senderText');
+        const replyStatus = document.getElementById('replyStatus');
+        const lastAction = document.getElementById('lastAction');
+        const fetchButton = document.getElementById('fetchButton');
+        const generateButton = document.getElementById('generateButton');
+        const ignoreButton = document.getElementById('ignoreButton');
+        const sendButton = document.getElementById('sendButton');
+        const markReadButton = document.getElementById('markReadButton');
+
+        let currentSender = '';
+        let currentMessageId = '';
+
+        function setButtonState(button, active) {
+            if (active) {
+                button.disabled = true;
+                button.classList.add('button-pressed');
+            } else {
+                button.disabled = false;
+                button.classList.remove('button-pressed');
+            }
+        }
+
+        fetchButton.onclick = async () => {
+            setButtonState(fetchButton, true);
+            try {
+                const response = await fetch('/api/fetch-email');
+                const data = await response.json();
+                if (data.success) {
+                    emailBody.value = data.email_content;
+                    currentSender = data.sender_email;
+                    currentMessageId = data.message_id || '';
+                    senderText.textContent = currentSender;
+                    lastAction.textContent = 'Fetched latest email';
+                    replyStatus.textContent = 'No';
+                    replyBody.value = '';
+                } else {
+                    alert(data.message || 'No email found');
+                    lastAction.textContent = 'Fetch failed';
+                }
+            } catch (error) {
+                console.error(error);
+                alert('Fetch failed. Please try again.');
+                lastAction.textContent = 'Fetch failed';
+            } finally {
+                setButtonState(fetchButton, false);
+            }
+        };
+
+        markReadButton.onclick = async () => {
+            if (!currentMessageId) {
+                alert('No loaded email to mark as read.');
+                return;
+            }
+            setButtonState(markReadButton, true);
+            try {
+                const response = await fetch('/api/mark-read', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message_id: currentMessageId })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    lastAction.textContent = 'Email marked as read';
+                    alert('Email marked as read.');
+                } else {
+                    alert(data.detail || 'Unable to mark read');
+                    lastAction.textContent = 'Mark read failed';
+                }
+            } catch (error) {
+                console.error(error);
+                alert('Mark read failed. Please try again.');
+                lastAction.textContent = 'Mark read failed';
+            } finally {
+                setButtonState(markReadButton, false);
+            }
+        };
+
+        generateButton.onclick = async () => {
+            const content = emailBody.value.trim();
+            if (!content) {
+                alert('Please provide email text first.');
+                return;
+            }
+            setButtonState(generateButton, true);
+            try {
+                const response = await fetch('/api/generate-reply', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email_content: content })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    replyBody.value = data.reply;
+                    replyStatus.textContent = 'Yes';
+                    lastAction.textContent = 'Reply generated';
+                } else {
+                    alert(data.detail || 'Unable to generate reply');
+                    lastAction.textContent = 'Generate failed';
+                }
+            } catch (error) {
+                console.error(error);
+                alert('Generate failed. Please try again.');
+                lastAction.textContent = 'Generate failed';
+            } finally {
+                setButtonState(generateButton, false);
+            }
+        };
+
+        sendButton.onclick = async () => {
+            const reply = replyBody.value.trim();
+            if (!reply) {
+                alert('No reply available to send.');
+                return;
+            }
+            if (!currentSender) {
+                alert('No sender email available. Fetch an email first.');
+                return;
+            }
+            setButtonState(sendButton, true);
+            try {
+                const response = await fetch('/api/send-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ recipient_email: currentSender, reply_content: reply })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    lastAction.textContent = 'Email sent';
+                    alert('Reply sent successfully.');
+                } else {
+                    alert(data.detail || 'Send failed');
+                    lastAction.textContent = 'Send failed';
+                }
+            } catch (error) {
+                console.error(error);
+                alert('Send failed. Please try again.');
+                lastAction.textContent = 'Send failed';
+            } finally {
+                setButtonState(sendButton, false);
+            }
+        };
+
+        ignoreButton.onclick = () => {
+            if (!emailBody.value.trim() && !currentSender) {
+                alert('No email loaded to ignore.');
+                return;
+            }
+            emailBody.value = '';
+            replyBody.value = '';
+            currentSender = '';
+            senderText.textContent = 'None';
+            replyStatus.textContent = 'No';
+            lastAction.textContent = 'Ignored unrelated mail';
+        };
+    </script>
+</body>
+</html>
